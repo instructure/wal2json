@@ -1,0 +1,41 @@
+\set VERBOSITY terse
+-- predictability
+SET synchronous_commit = on;
+SELECT 'init' FROM pg_create_logical_replication_slot('regression_slot', 'wal2json');
+ ?column? 
+----------
+ init
+(1 row)
+
+DROP TABLE IF EXISTS xmin ;
+CREATE TABLE xmin (id integer PRIMARY KEY);
+INSERT INTO xmin values (1);
+-- xmin is often (always?) 0, but this should be forward compat should that change in the future
+SELECT max(((data::json) -> 'xmin')::text::int) = (SELECT coalesce(xmin::text::int, 0) FROM pg_replication_slots WHERE slot_name = 'regression_slot') FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'include-xmins', '1', 'msg-per-record', '1');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT max(((data::json) -> 'catxmin')::text::int) = (SELECT catalog_xmin::text::int FROM pg_replication_slots WHERE slot_name = 'regression_slot') FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'include-xmins', '1', 'msg-per-record', '1');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT data FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'msg-per-record', '1') where ((data::json) -> 'catxmin') IS NOT NULL;
+ data 
+------
+(0 rows)
+
+SELECT data FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'msg-per-record', '1') where ((data::json) -> 'xmin') IS NOT NULL;
+ data 
+------
+(0 rows)
+
+SELECT 'stop' FROM pg_drop_replication_slot('regression_slot');
+ ?column? 
+----------
+ stop
+(1 row)
+
